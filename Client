@@ -1,0 +1,1408 @@
+import com.formdev.flatlaf.FlatLightLaf;
+import com.formdev.flatlaf.intellijthemes.FlatDarkFlatIJTheme;
+import com.sun.tools.javac.Main;
+
+import javax.imageio.ImageIO;
+import javax.swing.*;
+import javax.swing.text.*;
+import javax.swing.text.html.StyleSheet;
+import java.awt.*;
+import java.awt.desktop.SystemSleepEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.awt.geom.Ellipse2D;
+import java.awt.image.BufferedImage;
+import java.awt.image.ConvolveOp;
+import java.awt.image.ImageObserver;
+import java.awt.image.Kernel;
+import java.io.*;
+import java.net.*;
+import java.sql.Time;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Scanner;
+import com.jhlabs.image.GaussianFilter;
+
+import static java.lang.System.exit;
+
+class console
+{
+    public static boolean Findornot=false;
+    public static boolean Exitornot=false;
+    public static boolean logornot=false;
+    public static boolean Chatwithyou=false;
+}
+public class Client {
+
+    public static void main(String Args[]) throws UnsupportedLookAndFeelException {
+
+        FlatLightLaf.setup();
+        UIManager.setLookAndFeel( new FlatLightLaf());
+        UIManager.put( "Button.arc", 40 );
+        UIManager.put( "Component.arc", 40 );
+
+        Socket socket = null;
+        try {
+            socket = new Socket("127.0.0.1", 6606);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        System.out.println("欢迎进入聊天室，请登录");
+        JFrame frame1 = new JFrame("线聊");
+        User user = new User(frame1,socket);
+        Socket finalSocket = socket;
+        frame1.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosed(WindowEvent e) {
+                System.out.println("打开主界面");
+                Main_UI main_ui = null;
+                try {
+                    main_ui = new Main_UI(user,finalSocket);
+                } catch (UnsupportedLookAndFeelException ex) {
+                    throw new RuntimeException(ex);
+                } catch (InterruptedException ex) {
+                    throw new RuntimeException(ex);
+                } catch (IOException ex) {
+                    throw new RuntimeException(ex);
+                }
+                try {
+                    DataOutputStream dos = new DataOutputStream(finalSocket.getOutputStream());
+                    dos.writeUTF("Connected");
+                    dos.writeUTF(user.user_name);
+                } catch (IOException ex) {
+                    throw new RuntimeException(ex);
+                }
+                //Thread st = new Thread(new ClientSendThread(finalSocket, user.user_name));
+                Thread rt = null;
+                try {
+                    rt = new Thread(new ClientReceiveThread(finalSocket, user.user_name,main_ui));
+                } catch (IOException ex) {
+                    throw new RuntimeException(ex);
+                }
+                // st.start();
+                rt.start();
+            }
+        });
+
+
+    }
+
+}
+
+class Main_UI extends JFrame {
+    static JTextPane Message_Area;
+    static JScrollPane scrollPane;
+    static StyledDocument doc;
+    static JFrame frame = null;
+    static Socket socket = null;
+    static JScrollPane userScrollPane=null;
+    static DefaultListModel<String> userListModel = new DefaultListModel<>();
+    static JList<String> userList=null;
+    static ArrayList<ImageIcon> avatars = new ArrayList<>();
+    static  User user;
+
+    private static final String API_KEY = "48cfb2ab408e0af482f2592e13650c4d"; // 替换为您的OpenWeatherMap API密钥
+    private static final String CITY = "London"; // 您想要查询的城市
+    private static final String API_URL = "http://api.openweathermap.org/data/2.5/weather?q=" + CITY + "&appid=" + API_KEY + "&units=metric";
+
+    Main_UI(User user,Socket socket) throws UnsupportedLookAndFeelException, InterruptedException, IOException {
+
+
+        //Thread.sleep(800);
+        this.user=user;
+        this.socket=socket;
+        userList = new JList<>(userListModel);
+
+        frame = new JFrame("线聊");
+        frame.setSize(900, 600);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setLocationRelativeTo(null);
+        frame.setVisible(true);
+        frame.setLayout(new GridBagLayout());
+        ImageIcon icon = new ImageIcon("./icon/icon.png"); // 替换为你的图标路径
+        Image image = icon.getImage(); // 获取图像
+        frame.setIconImage(image); // 设置窗口图标
+// 设置内容面板的背景颜色
+
+        GridBagConstraints constraints = new GridBagConstraints();
+
+        Font yahei_20 = new Font("Microsoft Yahei", Font.PLAIN, 20);
+
+        JLabel user_name = new JLabel("当前账号: " + user.user_name);
+        user_name.setFont(yahei_20);
+        Profile user_profile = new Profile(user.user_name);
+        ImageIcon head_icon = user_profile.head_icon;
+        JLabel h_i = new JLabel(head_icon);
+
+        JPanel user_info = new JPanel();
+        user_info.setLayout(new FlowLayout());
+        user_info.add(h_i);
+        user_info.add(user_name);
+
+        Message_Area = new JTextPane();
+        Message_Area.setEditable(false);
+        Message_Area.setFont(yahei_20);
+        scrollPane = new JScrollPane(Message_Area);
+        doc = Message_Area.getStyledDocument();
+        Color back_c = new Color(245, 245, 247);
+        Message_Area.setBackground(back_c);
+
+        Font yahei_14 = new Font("Microsoft Yahei", Font.PLAIN, 14);
+        JTextArea Type_Area = new JTextArea();
+        Type_Area.setFont(yahei_14);
+        Type_Area.setLineWrap(true);
+        Type_Area.setWrapStyleWord(true);
+
+        JPanel topPanel = new JPanel();
+        topPanel.setLayout(new BorderLayout());
+        topPanel.add(scrollPane);
+
+        JPanel bottomPanel = new JPanel();
+        bottomPanel.setLayout(new BorderLayout()); // 同样添加布局管理器
+        bottomPanel.add(Type_Area);
+
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        // 将面板添加到 JSplitPane
+        splitPane.setTopComponent(topPanel);
+        splitPane.setBottomComponent(bottomPanel);
+        splitPane.setDividerLocation(0.8);
+        splitPane.setResizeWeight(0.8);
+
+        constraints.gridx = 1;
+        constraints.gridy = 0;
+        constraints.gridheight = 2;
+        constraints.gridwidth = 1;
+        constraints.fill = GridBagConstraints.BOTH;
+        constraints.weightx = 1.0; // 让 splitPane 在水平方向上扩展
+        constraints.weighty = 1.0; // 让 splitPane 在垂直方向上扩展
+        frame.add(splitPane, constraints);
+
+        ImageIcon sendIcon = new ImageIcon(getClass().getResource("./icon/send.png"));
+        ImageIcon documentIcon = new ImageIcon(getClass().getResource("./icon/document.png"));
+        JTextField Send_Who = new JTextField();
+        Send_Who.setPreferredSize(new Dimension(150, 40));
+        JButton Send_Button = new JButton(sendIcon);
+        Color send_c = new Color(0, 153, 255);
+        Send_Button.setBackground(send_c);
+        Send_Button.setPreferredSize(new Dimension(100, 40));
+        JButton Send_Document = new JButton(documentIcon);
+        Send_Document.setBackground(Color.ORANGE);
+        Send_Document.setPreferredSize(new Dimension(100, 40));
+
+        JPanel Private_Panel = new JPanel();
+        Private_Panel.setLayout(new FlowLayout());
+        Private_Panel.add(Send_Document);
+        Private_Panel.add(Send_Who);
+        Private_Panel.add(Send_Button);
+        constraints.gridx = 1;
+        constraints.gridy = 2;
+        constraints.fill = GridBagConstraints.HORIZONTAL;
+        constraints.weightx = 1; // 让 splitPane 在水平方向上扩展
+        constraints.weighty = 0.03; // 让 splitPane 在垂直方向上扩展
+        frame.add(Private_Panel, constraints);
+
+        Send_Button.addActionListener(e -> {
+            if (Type_Area.getText().isEmpty()) {
+                JOptionPane.showMessageDialog(null, "发送的消息不能为空", "提示", JOptionPane.INFORMATION_MESSAGE);
+            } else {
+                Thread st = new Thread(new ClientSendThread(user.sk, user.user_name, Type_Area.getText(), Send_Who.getText(), this));
+                st.start();
+                Type_Area.setText("");
+                Send_Who.setText("");
+            }
+        });
+        Send_Document.addActionListener(e -> {
+            JFileChooser fileChooser = new JFileChooser();//选择文件
+            fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+            int returnValue = fileChooser.showOpenDialog(null);
+            if (returnValue == JFileChooser.APPROVE_OPTION) { // 用户选择了文件
+                File selectedFile = fileChooser.getSelectedFile();
+                Thread st = null;
+                try {
+                    st = new Thread(new ClientSendThread(user.sk, user.user_name, "INFORMATION:SEND_DOCUMENT", Send_Who.getText(), selectedFile, this));
+                } catch (IOException ex) {
+                    throw new RuntimeException(ex);
+                }
+                st.start();
+            } else {
+                // 用户取消了文件选择
+                System.out.println("用户取消了文件选择");
+            }
+        });
+
+        //在线列表
+        // 头像图标
+
+        userList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        // 自定义单元格渲染器
+        userList.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                JPanel panel = new JPanel(new BorderLayout(10, 0));
+                panel.setOpaque(false);
+
+                JLabel label = new JLabel();
+                label.setIcon(avatars.get(index));
+                label.setHorizontalAlignment(JLabel.CENTER);
+                panel.add(label, BorderLayout.WEST);
+
+                JLabel userNameLabel = new JLabel(value.toString());
+                userNameLabel.setHorizontalAlignment(JLabel.CENTER);
+                panel.add(userNameLabel, BorderLayout.CENTER);
+
+                // 判断是否为当前用户
+                if (!isCurrentUser(value.toString())) {
+                    // 检查是否为好友
+                    try {
+                        if (areFriends(user.user_name, value.toString())) {
+                            // 是好友，显示“好友”
+                            JLabel friendLabel = new JLabel("好友");
+                            friendLabel.setHorizontalAlignment(JLabel.CENTER);
+                            panel.add(friendLabel, BorderLayout.EAST);
+                        } else {
+                            // 不是好友，显示添加好友按钮
+                            JButton addButton = new JButton("添加好友");
+                            addButton.setMargin(new Insets(0, 0, 0, 0));
+                            panel.add(addButton, BorderLayout.EAST);
+                        }
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                } else {
+                    // 是当前用户，显示“我”
+                    JLabel meLabel = new JLabel("我");
+                    meLabel.setHorizontalAlignment(JLabel.CENTER);
+                    panel.add(meLabel, BorderLayout.EAST);
+                }
+
+                return panel;
+            }
+        });
+
+
+        DefaultListModel<String> finalUserListModel = userListModel;
+        userList.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int index = userList.locationToIndex(e.getPoint());
+                if (index != -1) {
+                    // 获取单元格的边界
+                    Rectangle cellBounds = userList.getCellBounds(index, index);
+                    if (cellBounds.contains(e.getPoint())) {
+                        if (!isCurrentUser(finalUserListModel.get(index))) {
+                        int buttonWidth = 80;
+                        int buttonX = cellBounds.x + cellBounds.width - buttonWidth;
+                            try {
+                                if (e.getX() > buttonX && !areFriends(user.user_name, finalUserListModel.get(index))) {
+                                // 弹出确认对话框
+                                int response = JOptionPane.showConfirmDialog(frame,
+                                        "是否添加 " + finalUserListModel.get(index) + " 为好友？",
+                                        "添加好友", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+                                // 处理对话框的响应
+                                if (response == JOptionPane.YES_OPTION) {
+                                    System.out.println("已发送添加好友请求给 " + finalUserListModel.get(index));
+                                    Friend_Apply fa = new Friend_Apply(socket, user.user_name, finalUserListModel.get(index));
+                                    fa.run();
+                                }
+                            }
+                            } catch (IOException ex) {
+                                throw new RuntimeException(ex);
+                            }
+                        }}
+                }
+            }
+        });
+
+        // 为用户列表添加滚动面板
+        userScrollPane = new JScrollPane(userList);
+        userScrollPane.setPreferredSize(new Dimension(200, 400));
+
+        JPanel left_panel = new JPanel(new FlowLayout());
+        left_panel.add(user_info);
+        left_panel.add(userScrollPane);
+
+
+        // 添加用户列表到界面
+        constraints.gridx = 0;
+        constraints.gridy = 0;
+        constraints.gridheight=2;
+        constraints.gridwidth=1;
+        constraints.fill = GridBagConstraints.VERTICAL;
+        constraints.weightx = 0.1; // 让用户列表在水平方向上占据一定比例
+        constraints.weighty = 1.0; // 让用户列表在垂直方向上扩展
+        frame.add(left_panel, constraints);
+        InitChat();
+    }
+    boolean isCurrentUser(String userName)
+    {
+        return userName.equals(user.user_name); // currentUser是当前登录的用户对象
+    }
+
+    boolean areFriends(String user1, String user2) throws IOException {
+        File file = new File("./User_Profile/"+user1+".txt");
+        FileReader fr = new FileReader(file);
+        BufferedReader br = new BufferedReader(fr);
+        String temp_user;
+        while ((temp_user = br.readLine()) != null) {
+            if (temp_user.equals(user2)) {
+                return true;
+            }
+        }
+        return false; // 占位返回值，你需要根据实际情况实现
+    }
+
+    public void addOnlineUsers(String newOnlineUsers) {
+        // 清空当前列表
+        System.out.println("正在更新"+newOnlineUsers);
+        avatars.add(new Profile(newOnlineUsers).chat_icon);
+        userListModel.addElement(newOnlineUsers);
+        // 如果需要，可以在这里更新头像数组或其他相关数据
+    }
+
+    public void ClearOnlineUsers() {
+       //初始
+        avatars.clear();
+        userListModel.clear();
+    }
+
+    void insertText(String text, Color colorName, int textSize, int textAlign) {
+        SimpleAttributeSet set = new SimpleAttributeSet();
+        StyleConstants.setForeground(set, colorName);
+        StyleConstants.setFontSize(set, textSize);
+        StyleConstants.setAlignment(set, textAlign);
+        doc.setParagraphAttributes(Message_Area.getText().length(), doc.getLength() - Message_Area.getText().length(), set, false);
+        try {
+            doc.insertString(doc.getLength(), text, set);
+        } catch (BadLocationException e) {
+            e.printStackTrace();
+        }
+    }
+    void insertTextWithBubble(String text, Color textColor, Color bubbleColor, int textSize, int textAlign) {
+        SimpleAttributeSet set = new SimpleAttributeSet();
+        StyleConstants.setForeground(set, textColor);
+        StyleConstants.setFontSize(set, textSize);
+        StyleConstants.setAlignment(set, textAlign);
+
+        // 设置背景颜色（这里使用高亮颜色来模拟气泡效果）
+        StyleConstants.setBackground(set, bubbleColor);
+        // 设置左右边距来模拟气泡的圆角效果（这里以20为例）
+        StyleConstants.setLeftIndent(set, 20);
+        StyleConstants.setRightIndent(set, 20);
+        // 设置段落间距
+        StyleConstants.setSpaceAbove(set, 10);
+        StyleConstants.setSpaceBelow(set, 10);
+
+        try {
+            doc.insertString(doc.getLength(), text , set);
+        } catch (BadLocationException e) {
+            e.printStackTrace();
+        }
+    }
+
+    void insertImage(ImageIcon icon)
+    {
+        Style style = doc.addStyle("IconStyle",null);
+        StyleConstants.setIcon(style,icon);
+        try
+        {
+            doc.insertString(doc.getLength(),"\u200B",style);
+        }catch (BadLocationException e)
+        {
+            e.printStackTrace();
+        }
+    }
+    void insertImageWithAlignment(ImageIcon icon, int alignment) {
+        // 创建一个新的样式来设置图像的对齐方式
+        Style style = doc.addStyle("AlignedIconStyle", null);
+        StyleConstants.setIcon(style, icon);
+        // 这里我们不直接设置对齐方式，而是在插入文本时通过额外的空格来控制
+
+        try {
+            // 根据对齐方式插入不同数量的空格来模拟对齐效果
+            String spaces = (alignment == StyleConstants.ALIGN_LEFT) ? "" : "                    "; // 右边对齐时插入空格
+            doc.insertString(doc.getLength(), spaces + "\u200B", style);
+        } catch (BadLocationException e) {
+            e.printStackTrace();
+        }
+    }
+
+    void InitChat() throws IOException {
+        File chat = new File("./Chats/"+user.user_name+".txt");
+        BufferedReader br = new BufferedReader(new FileReader(chat));
+        String content;
+        String former_time = null;
+        boolean first_msg = true;
+        while((content=br.readLine())!=null)
+        {
+            if(!content.equals("Group")&&!content.equals("Private"))
+            {
+                String time_content =content.substring(5,16);//获取时间
+                if(first_msg==true)
+                {
+                    first_msg=false;
+                    former_time=time_content;
+                    insertText(time_content+"\n", Color.GRAY, 12, StyleConstants.ALIGN_CENTER);
+                }
+                else
+                {
+                    if(!former_time.equals(time_content))
+                    {
+                        former_time=time_content;
+                        insertText(time_content+"\n", Color.GRAY, 12, StyleConstants.ALIGN_CENTER);
+                    }
+                }
+
+            }
+            else if(content.equals("Group"))
+            {
+                String user_name = br.readLine();
+                Profile pf =new Profile(user_name);
+                if(user_name.equals(user.user_name))//是本人发的
+                {
+                    String msg ;
+                    boolean pic = false;
+                    String file_url=null;
+                    while(!(msg=br.readLine()).equals("EOF"))
+                    {
+                        if (msg.toLowerCase().endsWith(".jpg") || msg.toLowerCase().endsWith(".png") || msg.toLowerCase().endsWith(".gif"))
+                        {
+                            pic=true;
+                            file_url=msg.substring(7);
+                        }
+                            insertTextWithBubble(" " + msg + " ", Color.WHITE, new Color(180, 220, 255), 16, StyleConstants.ALIGN_RIGHT);
+                    }
+                    insertText(" :"+user_name+" ",Color.black,16,StyleConstants.ALIGN_RIGHT);
+
+                    insertImageWithAlignment(pf.chat_icon,StyleConstants.ALIGN_RIGHT);//头像
+                    insertText("\n",Color.black,16,StyleConstants.ALIGN_RIGHT);
+                    if(pic==true)
+                    {
+                        String pic_f = "./User_Download/"+user.user_name+"/"+file_url;
+                        Profile pic_pro = new Profile(new File(pic_f),true);
+                        insertImageWithAlignment(pic_pro.Chat,StyleConstants.ALIGN_RIGHT);
+                        insertText("\n",Color.black,16,StyleConstants.ALIGN_RIGHT);
+                    }
+                }
+                else//不是本人发的
+                {
+                    insertImageWithAlignment(pf.chat_icon,StyleConstants.ALIGN_LEFT);
+                    insertText(" "+user_name+" :",Color.black,16,StyleConstants.ALIGN_LEFT);
+                    String msg;
+                    boolean pic = false;
+                    String file_url=null;
+                    while(!(msg=br.readLine()).equals("EOF"))
+                    {
+
+                        if (msg.toLowerCase().endsWith(".jpg") || msg.toLowerCase().endsWith(".png") || msg.toLowerCase().endsWith(".gif"))
+                        {
+                            pic=true;
+                            file_url=msg.substring(7);
+                        }
+                        insertTextWithBubble("  "+msg+" ",Color.WHITE,new Color(54,210,93),16, StyleConstants.ALIGN_LEFT);
+
+                    }
+
+                    insertText("\n",Color.black,16,StyleConstants.ALIGN_LEFT);
+                    if(pic==true)
+                    {
+                        String pic_f = "./User_Download/"+user.user_name+"/"+file_url;
+                        Profile pic_pro = new Profile(new File(pic_f),true);
+                        insertImageWithAlignment(pic_pro.Chat,StyleConstants.ALIGN_LEFT);
+                        insertText("\n",Color.black,16,StyleConstants.ALIGN_LEFT);
+                    }
+                }
+            }
+            else if(content.equals("Private"))
+            {
+                String user_name_1 = br.readLine();
+                Profile pf_1 =new Profile(user_name_1);
+                boolean pic = false;
+                String file_url=null;
+                if(user_name_1.equals(user.user_name))//是本人发的
+                {
+                    String user_name_2 = br.readLine();
+                    Profile pf_2 = new Profile(user_name_2);
+                    String msg ;
+                    while(!(msg=br.readLine()).equals("EOF"))
+                    {
+                        if (msg.toLowerCase().endsWith(".jpg") || msg.toLowerCase().endsWith(".png") || msg.toLowerCase().endsWith(".gif"))
+                        {
+                            pic=true;
+                            file_url=msg.substring(7);
+                        }
+                        insertTextWithBubble(" "+msg+" ",Color.WHITE,Color.orange,16, StyleConstants.ALIGN_RIGHT);
+
+                    }
+                    insertText(" : 你向"+user_name_2,Color.black,16,StyleConstants.ALIGN_RIGHT);
+                    insertImageWithAlignment(pf_2.chat_icon,StyleConstants.ALIGN_RIGHT);//头像
+                    insertText(" 发了一条消息(私信) "+user_name_1,Color.black,16,StyleConstants.ALIGN_RIGHT);
+                    insertImageWithAlignment(pf_1.chat_icon,StyleConstants.ALIGN_RIGHT);//头像
+
+                    if(pic==true)
+                    {
+                        String pic_f = "./User_Download/"+user.user_name+"/"+file_url;
+                        Profile pic_pro = new Profile(new File(pic_f),true);
+                        insertImageWithAlignment(pic_pro.Chat,StyleConstants.ALIGN_RIGHT);
+                        insertText("\n",Color.black,16,StyleConstants.ALIGN_RIGHT);
+                    }
+                    insertText("\n",Color.black,16,StyleConstants.ALIGN_RIGHT);
+
+                    
+                }
+                else//不是本人发的
+                {
+                    String user_name_2 = br.readLine();
+                    Profile pf_2 = new Profile(user_name_2);
+                    insertImageWithAlignment(pf_1.chat_icon,StyleConstants.ALIGN_LEFT);
+                    insertText(user_name_1+" 跟你私聊了(私信): ",Color.black,16,StyleConstants.ALIGN_LEFT);
+                    String msg;
+
+                    while(!(msg=br.readLine()).equals("EOF"))
+                    {
+                        if (msg.toLowerCase().endsWith(".jpg") || msg.toLowerCase().endsWith(".png") || msg.toLowerCase().endsWith(".gif"))
+                        {
+                            pic=true;
+                            file_url=msg.substring(7);
+                        }
+                        insertTextWithBubble("  "+msg+" ",Color.WHITE,Color.PINK,16, StyleConstants.ALIGN_LEFT);
+
+                    }
+                    insertText("\n",Color.black,16,StyleConstants.ALIGN_LEFT);
+                    if(pic==true)
+                    {
+                        String pic_f = "./User_Download/"+user.user_name+"/"+file_url;
+                        Profile pic_pro = new Profile(new File(pic_f),true);
+                        insertImageWithAlignment(pic_pro.Chat,StyleConstants.ALIGN_LEFT);
+                        insertText("\n",Color.black,16,StyleConstants.ALIGN_LEFT);
+                    }
+                }
+            }
+        }
+    }
+}
+
+class ClientSendThread implements Runnable
+{
+    Scanner sc = new Scanner(System.in);
+    DataOutputStream dos = null;
+    Socket socket = null;
+    String User_Name;
+    String send_msg;
+    String to_whom;
+    Main_UI main_ui;
+    File selectedFile=null;
+
+    ClientSendThread(Socket socket,String User_Name,String send_msg,String to_whom,Main_UI main_ui) {
+        try {
+            this.socket = socket;
+            this.dos=new DataOutputStream(socket.getOutputStream());
+            this.User_Name=User_Name;
+            this.send_msg=send_msg;
+            this.to_whom=to_whom;
+            this.main_ui=main_ui;
+            System.out.println("文本消息模式");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    ClientSendThread(Socket socket,String User_Name,String send_msg,String to_whom,File selectedFile,Main_UI main_ui) throws IOException {
+        try {
+            this.socket = socket;
+            this.dos=new DataOutputStream(socket.getOutputStream());
+            this.User_Name=User_Name;
+            this.send_msg="DOCUMENT";
+            this.to_whom=to_whom;
+            this.selectedFile=selectedFile;
+            this.main_ui=main_ui;
+            System.out.println("文件传输模式");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void run()
+    {
+        try {
+
+
+            Operator_Choose();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+    void Operator_Choose() throws IOException {
+        try {
+            Thread.sleep(300);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        System.out.println("执行了发送操作");
+        String opreator=null;
+        console.Findornot=false;
+        if(to_whom.isEmpty())
+        {
+            opreator="A";
+        }
+        else
+        {
+                opreator="B";
+        }
+        if(opreator.equals("A"))
+        {
+            try {
+                dos.writeUTF("A");//发送指令A
+                Group_Chat();//进入群聊模式
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        else if(opreator.equals("B"))
+        {
+            try {
+                dos.writeUTF("B");//发送指令B
+                Private_Chat();//进入私聊模式
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+    }
+    void Group_Chat()
+    {//群聊模式
+        String send_msg;
+        System.out.println("执行了发送到公屏的内容");
+        if(selectedFile==null)//不发送文件模式
+        {
+            send_msg = this.send_msg;
+            try {
+                dos.writeUTF(send_msg);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        else
+        {
+            try {
+                dos.writeUTF("DOCUMENT");//发送文件标记
+                dos.writeUTF(selectedFile.getName()); // 发送文件名
+
+
+                // 发送文件内容
+                FileInputStream fis = new FileInputStream(selectedFile);//读取本地文件
+
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = fis.read(buffer)) != -1) {
+                    dos.write(buffer, 0, bytesRead);
+                    System.out.println("读取文件中");
+                }
+                dos.flush();
+                dos.writeUTF("EOF");
+                dos.flush();
+                dos=new DataOutputStream(socket.getOutputStream());
+            } catch (IOException e) {
+                System.err.println("文件发送过程中出错: " + e.getMessage());
+            }
+            System.out.println("读取成功");
+        }
+    }
+    void Private_Chat() throws IOException {
+        String Chat_To_People;
+        System.out.println("进入私聊模式");
+        Chat_To_People=to_whom;
+
+        try{
+            dos.writeUTF(to_whom);}//发送要给谁的名字
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+        try {
+            Thread.sleep(300);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
+        System.out.println("当前状态FindorNot"+console.Findornot);
+
+        if(console.Findornot==true&&console.Chatwithyou==false)
+        {
+            String send_msg;
+            //System.out.println("请输入发送给"+Chat_To_People+"公屏的内容");
+            if(main_ui.areFriends(this.User_Name,to_whom)==false)
+            {
+                System.out.println("还不是好友");
+                JOptionPane.showMessageDialog(null, "无法私聊，因为还不是好友", "错误", JOptionPane.ERROR_MESSAGE);
+                 dos.writeUTF("REJECT");
+                return;
+            }
+            else
+            {
+                dos.writeUTF("CONTINUE");
+            }
+            if(selectedFile==null)//不发送文件模式
+            {
+                send_msg = this.send_msg;
+                try {
+                    dos.writeUTF(send_msg);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+             else
+            {
+                try {
+                    dos.writeUTF("DOCUMENT");//发送文件标记
+                    dos.writeUTF(selectedFile.getName()); // 发送文件名
+
+                    FileInputStream fis = new FileInputStream(selectedFile);//读取本地文件
+                    File targetDir = new File("./User_Download/" + User_Name + "/");
+                    if (!targetDir.exists()) {
+                        targetDir.mkdirs();
+                    }
+                    File targetFile = new File(targetDir, selectedFile.getName());
+
+                    // 复制文件到目标目录
+                    try (FileOutputStream fos = new FileOutputStream(targetFile)) {
+                        byte[] buffer = new byte[4096];
+                        int bytesRead;
+                        while ((bytesRead = fis.read(buffer)) != -1) {
+                            fos.write(buffer, 0, bytesRead);
+                        }
+                        System.out.println("文件已成功复制到 " + targetDir.getAbsolutePath());
+                    }
+                    // 发送文件内容
+                    fis = new FileInputStream(selectedFile);
+                    byte[] buffer = new byte[4096];
+                    int bytesRead;
+                    while ((bytesRead = fis.read(buffer)) != -1) {
+                        dos.write(buffer, 0, bytesRead);
+                        System.out.println("读取文件中");
+                    }
+                    dos.flush();
+                    dos.writeUTF("EOF");
+                    dos.flush();
+                    dos=new DataOutputStream(socket.getOutputStream());
+                } catch (IOException e) {
+                    System.err.println("文件发送过程中出错: " + e.getMessage());
+                }
+                System.out.println("读取成功");
+            }
+        }
+        else if(console.Findornot==false)
+        {
+            System.out.println("无此人");
+            JOptionPane.showMessageDialog(null, "无此人/此人不在线", "错误", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        else if (console.Chatwithyou==true)
+        {
+            System.out.println("不允许对自己聊天");
+            JOptionPane.showMessageDialog(null, "不允许与自己私聊", "错误", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+    }
+}
+class ClientReceiveThread implements Runnable {
+    DataInputStream dis = null;
+    Socket socket = null;
+    String User_Name;
+    Main_UI main_ui;
+    File sentFile=null;
+    Time_Now now = new Time_Now();
+    File save_chats;
+    FileWriter fw;
+
+    ClientReceiveThread(Socket socket, String User_Name, Main_UI main_ui) throws IOException {
+        try {
+            this.socket = socket;
+            this.dis = new DataInputStream(socket.getInputStream());
+            this.User_Name = User_Name;
+            this.main_ui = main_ui;
+            this.save_chats=new File("./Chats/"+this.User_Name+".txt");
+            System.out.println(save_chats);
+            this.fw = new FileWriter(save_chats,true);
+        } catch (IOException e
+        ) {
+            e.printStackTrace();
+        }
+    }
+
+
+    public void run() {
+        while (true) {
+            try {
+                String receive_msg;
+                receive_msg = dis.readUTF();
+                System.out.println("收到了消息："+receive_msg);
+
+                console.Findornot=true;
+                if (receive_msg.equals("ERROR:NOT_FIND_TARGET_USER"))
+                {
+                    System.out.println("未找到目标用户");
+                    console.Findornot = false;
+                    console.Chatwithyou=false;
+                }
+                else if(receive_msg.equals("INFORMATION:UPDATE_LIST"))
+                {
+                    main_ui.ClearOnlineUsers();
+                    int user_nums = dis.read();//接受用户有多少个
+                    for(int i = 0; i < user_nums; i++) {
+                        String user_name = dis.readUTF();
+                        main_ui.addOnlineUsers(user_name);
+                    }
+                    main_ui.repaint();
+                    System.out.println("更新列表完成");
+                }
+                else if(receive_msg.equals("INFORMATION:FRIEND_APPLY"))
+                {
+                    System.out.println("请求加好友了！！！");
+                    String Applier = dis.readUTF();//接收申请者的名字
+                    int response = JOptionPane.showConfirmDialog(main_ui, "用户 " + Applier + " 请求添加您为好友，是否接受？", "好友申请", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+
+                    // 根据对话框的响应执行操作
+                    if (response == JOptionPane.YES_OPTION) {
+                        // 用户接受了好友申请
+                        // 这里可以添加接受好友申请的逻辑，比如发送确认消息给服务器
+                        System.out.println("接受了 " + Applier + " 的好友申请");
+                        DataOutputStream dos=new DataOutputStream(socket.getOutputStream());
+                        dos.writeUTF("INFORMATION:ACCEPT");
+
+                        dos.writeUTF(Applier);
+                        // ... 发送接受好友申请的逻辑 ...
+
+                        File filename = new File("./User_Profile/"+this.User_Name+".txt");
+                        FileWriter fw = new FileWriter(filename, true);
+                        fw.write(Applier + "\n");
+                        fw.close();
+                        System.out.println("成功添加好友");
+
+                    } else {
+                        // 用户拒绝了好友申请
+                        // 这里可以添加拒绝好友申请的逻辑，比如发送拒绝消息给服务器
+                        System.out.println("拒绝了 " + Applier + " 的好友申请");
+                        DataOutputStream dos=new DataOutputStream(socket.getOutputStream());
+                        dos.writeUTF("INFORMATION:REJECT");
+                        // ... 发送拒绝好友申请的逻辑 ...
+                        dos.writeUTF(Applier);
+                        // ... 发送接受好友申请的逻辑 ...
+                        System.out.println("没有添加好友");
+                    }
+
+                }
+                else if(receive_msg.equals("INFORMATION:ACCEPT"))
+                {
+                    System.out.println("同意了");
+                    String new_friend_name = dis.readUTF();
+                    File filename = new File("./User_Profile/"+this.User_Name+".txt");
+                    FileWriter fw = new FileWriter(filename, true);
+                    fw.write(new_friend_name + "\n");
+                    fw.close();
+                    JOptionPane.showMessageDialog(null, "成功添加好友: " + new_friend_name, "添加好友", JOptionPane.INFORMATION_MESSAGE);
+                    System.out.println("成功添加好友");
+                }
+                else if(receive_msg.equals("INFORMATION:REJECT"))
+                {
+                    System.out.println("拒绝了");
+                    String new_friend_name = dis.readUTF();
+                    JOptionPane.showMessageDialog(null, new_friend_name+"拒绝添加好友:", "添加好友", JOptionPane.INFORMATION_MESSAGE);
+                    System.out.println("拒绝添加好友");
+                }
+                else if(receive_msg.equals("INFORMATION:FINDED_TARGET_USER"))
+                {
+                    System.out.println("找到该目标用户");
+                    console.Findornot = true;
+                    console.Chatwithyou=false;
+                    receive_msg = dis.readUTF();//获取命令
+                    System.out.println("获取的命令是"+receive_msg);
+                    if(receive_msg.equals("REJECT"))
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        //receive_msg=dis.readUTF();
+                    }
+
+                    receive_msg=dis.readUTF();//继续获取命令
+                    System.out.println("获取的命令是"+receive_msg);
+                    receive_msg=dis.readUTF();//获取私聊的内容
+                    String target = receive_msg;
+                    receive_msg=dis.readUTF();//获取的是目标用户名
+                    String sender = receive_msg;
+                    receive_msg=dis.readUTF();
+                    String content = receive_msg;
+                    System.out.println("获取的命令是"+receive_msg);
+                    Profile pf_s = new Profile(sender);
+                    Profile pf_r = new Profile(target);
+                    main_ui.insertText("",Color.BLACK,16,StyleConstants.ALIGN_RIGHT);
+                    main_ui.insertTextWithBubble(" "+content+" ",Color.WHITE,Color.orange,16, StyleConstants.ALIGN_RIGHT);
+                    main_ui.insertText(": 你向"+target+" ",Color.BLACK,16,StyleConstants.ALIGN_RIGHT);
+                    main_ui.insertImageWithAlignment(pf_r.chat_icon,StyleConstants.ALIGN_RIGHT);//头像
+                    main_ui.insertText(" 私聊了(私信) ",Color.BLACK,16,StyleConstants.ALIGN_RIGHT);
+                    main_ui.insertImageWithAlignment(pf_s.chat_icon,StyleConstants.ALIGN_RIGHT);//头像
+                    main_ui.insertText(" \n ",Color.BLACK,16,StyleConstants.ALIGN_RIGHT);
+                    if (content.toLowerCase().endsWith(".jpg") || content.toLowerCase().endsWith(".png") || content.toLowerCase().endsWith(".gif"))
+                    {
+                        Thread.sleep(3000);
+                        String pic_f = "./User_Download/"+User_Name+"/"+content.substring(7);
+                        Profile pic_pro = new Profile(new File(pic_f),true);
+                        main_ui.insertImageWithAlignment(pic_pro.Chat,StyleConstants.ALIGN_RIGHT);
+                        main_ui.insertText(" \n",Color.BLACK,16,StyleConstants.ALIGN_RIGHT);
+                    }
+
+
+                    fw.write("Private\n"+this.User_Name+"\n"+target+"\n"+content+"\n"+"EOF\n");
+                }
+                else if(receive_msg.equals("ERROR:CANT'T_CHAT_WITH_YOU")) {
+                    System.out.println("不能对自己发消息");
+                    console.Findornot = true;
+                    console.Chatwithyou = true;
+                }
+                else if (receive_msg.equals("OPREATOR:EXIT"))
+                {
+                    System.out.println("正在退出");
+                    console.Exitornot = true;
+                    break;
+                }
+                else if(receive_msg.equals("INFORMATION:GROUP"))
+                {//给客户端发起接收提醒，这是群发消息
+                    main_ui.insertText(now.get_from_Client()+"\n", Color.GRAY, 12, StyleConstants.ALIGN_CENTER);
+                    fw.write(now.get()+"\n");
+
+                    receive_msg=dis.readUTF();//再次接收，接收下一个提醒
+                    if(receive_msg.equals("DOCUMENT"))
+                    {
+
+                        System.out.println("准备接受文件！");
+                        String fileName = "./User_Download"+"/"+this.User_Name+"/"+dis.readUTF();
+                        System.out.println("准备接收文件:"+fileName);
+
+                        FileOutputStream fos = new FileOutputStream(fileName);
+                        byte[] buffer = new byte[4096]; // 缓冲区大小可根据需要调整
+                        int bytesRead;
+                        boolean eofReceived = false; // 标记是否接收到EOF
+
+                        while (!eofReceived) {
+                            bytesRead = dis.read(buffer);
+                            if (bytesRead == -1) {
+                                break; // 连接关闭，跳出循环（通常不会发生，因为服务器会发送EOF）
+                            }
+
+                            // 将读取的字节转换为字符串以检查EOF
+                            String received = new String(buffer, 0, bytesRead, "UTF-8");
+                            System.out.println(received);
+                            if (received.contains("EOF")) {
+                                eofReceived = true; // 接收到EOF，设置标记并跳出循环
+
+                                int eofIndex = received.indexOf("EOF");
+                                if (eofIndex != -1) {
+                                    fos.write(buffer, 0, eofIndex); // 只写入EOF之前的部分
+                                }
+                            } else {
+                                fos.write(buffer, 0, bytesRead); // 否则，将读取的数据写入到文件中
+                            }
+
+                            System.out.println("正在接收文件...");
+                        }
+
+                        fos.close();
+                        System.out.println("文件接收完成: " + fileName);
+
+                    }
+                    else if(receive_msg.equals("INFORMATION:NOT_SENDER"))//不是发送者就把消息放在左边
+                    {
+                        receive_msg=dis.readUTF();//接收的是发送者的名字
+                        String reciever= receive_msg;
+                        Profile pf = new Profile(receive_msg);
+                        main_ui.insertImageWithAlignment(pf.chat_icon,StyleConstants.ALIGN_LEFT);
+                        main_ui.insertText(" "+reciever+" ",Color.BLACK,16,StyleConstants.ALIGN_LEFT);
+                        receive_msg=dis.readUTF();//接收的是发送者发出的消息
+                        String content = receive_msg;
+                        main_ui.insertTextWithBubble(" "+receive_msg+" ",Color.WHITE,new Color(54,210,93),16, StyleConstants.ALIGN_LEFT);
+                        main_ui.insertText("\n",Color.black,16,StyleConstants.ALIGN_LEFT);
+                        if (content.toLowerCase().endsWith(".jpg") || content.toLowerCase().endsWith(".png") || content.toLowerCase().endsWith(".gif"))
+                        {
+                            Thread.sleep(3000);
+                            String pic_f = "./User_Download/"+User_Name+"/"+content.substring(7);
+                            Profile pic_pro = new Profile(new File(pic_f),true);
+                            main_ui.insertImageWithAlignment(pic_pro.Chat,StyleConstants.ALIGN_LEFT);
+                            main_ui.insertText(" \n",Color.BLACK,16,StyleConstants.ALIGN_LEFT);
+                        }
+                        fw.write("Group\n"+reciever+"\n"+receive_msg+"\n"+"EOF\n");
+                    }
+                    else//是发送者就把消息放在右边
+                    {
+                        receive_msg=dis.readUTF();
+                        Color sender = new Color(180, 220, 255);
+                        String content = receive_msg;
+                        receive_msg=dis.readUTF();//接收的是发送者的名字
+                        String sender_name = receive_msg;
+                        Profile pf = new Profile(sender_name);
+                        main_ui.insertText("",Color.BLACK,16,StyleConstants.ALIGN_RIGHT);
+                        main_ui.insertTextWithBubble(" "+content+" ",Color.WHITE,sender,16,StyleConstants.ALIGN_RIGHT);
+                        main_ui.insertText(" :"+sender_name+" ",Color.BLACK,16,StyleConstants.ALIGN_RIGHT);
+                        main_ui.insertImageWithAlignment(pf.chat_icon,StyleConstants.ALIGN_RIGHT);
+                        main_ui.insertText(" \n",Color.BLACK,16,StyleConstants.ALIGN_RIGHT);
+                        if (content.toLowerCase().endsWith(".jpg") || content.toLowerCase().endsWith(".png") || content.toLowerCase().endsWith(".gif"))
+                        {
+                            Thread.sleep(3000);
+                            String pic_f = "./User_Download/"+User_Name+"/"+content.substring(7);
+                            Profile pic_pro = new Profile(new File(pic_f),true);
+                            main_ui.insertImageWithAlignment(pic_pro.Chat,StyleConstants.ALIGN_RIGHT);
+                            main_ui.insertText(" \n",Color.BLACK,16,StyleConstants.ALIGN_RIGHT);
+                        }
+
+
+                        fw.write("Group\n"+sender_name+"\n"+content+"\n"+"EOF\n");
+
+                    }
+                }
+                else if(receive_msg.equals("INFORMATION:PRIVATE"))
+                {//给客户端发起接收提醒，这是私发消息
+                    main_ui.insertText(now.get_from_Client()+"\n", Color.GRAY, 12, StyleConstants.ALIGN_CENTER);
+                    fw.write(now.get()+"\n");
+                    System.out.println("进入到Private");
+                    receive_msg=dis.readUTF();//再次接收，接收下一个提醒
+                    System.out.println("下一个提醒是"+receive_msg);
+                    if(receive_msg.equals("DOCUMENT"))
+                    {
+                        System.out.println("准备接受文件！");
+                        String fileName = "./User_Download"+"/"+this.User_Name+"/"+dis.readUTF();
+                        System.out.println("准备接收文件:"+fileName);
+
+                        FileOutputStream fos = new FileOutputStream(fileName);
+                        byte[] buffer = new byte[4096]; // 缓冲区大小可根据需要调整
+                        int bytesRead;
+                        boolean eofReceived = false; // 标记是否接收到EOF
+
+                        while (!eofReceived) {
+                            bytesRead = dis.read(buffer);
+                            if (bytesRead == -1) {
+                                break; // 连接关闭，跳出循环（通常不会发生，因为服务器会发送EOF）
+                            }
+
+                            // 将读取的字节转换为字符串以检查EOF
+                            String received = new String(buffer, 0, bytesRead, "UTF-8");
+                            System.out.println(received);
+                            if (received.contains("EOF")) {
+                                eofReceived = true; // 接收到EOF，设置标记并跳出循环
+
+                                int eofIndex = received.indexOf("EOF");
+                                if (eofIndex != -1) {
+                                    fos.write(buffer, 0, eofIndex); // 只写入EOF之前的部分
+                                }
+                            } else {
+                                fos.write(buffer, 0, bytesRead); // 否则，将读取的数据写入到文件中
+                            }
+
+                            System.out.println("正在接收文件...");
+                        }
+
+                        fos.close();
+                        System.out.println("文件接收完成: " + fileName);
+
+                    }
+                    if ((receive_msg.equals("INFORMATION:RECEIVER")))//不是发送者就把消息放在左边
+                    {
+                        receive_msg=dis.readUTF();//接收的是发送者的名字
+                        //System.out.println(receive_msg);
+                        String sender= receive_msg;
+                        Profile pf = new Profile(receive_msg);
+                        main_ui.insertImageWithAlignment(pf.chat_icon, StyleConstants.ALIGN_LEFT);//头像
+                        receive_msg=dis.readUTF();//接收的是发送者发出的消息
+                        String content = receive_msg;
+                        main_ui.insertText(" "+sender+" (私信)向你发送了一条信息: ",Color.black,16,StyleConstants.ALIGN_LEFT);
+
+                        main_ui.insertTextWithBubble(" "+receive_msg+" ",Color.WHITE,Color.PINK,16, StyleConstants.ALIGN_LEFT);
+                        main_ui.insertText("\n",Color.black,16,StyleConstants.ALIGN_LEFT);
+                        fw.write("Private\n"+sender+"\n"+this.User_Name+"\n"+content+"\n"+"EOF\n");
+                        if (content.toLowerCase().endsWith(".jpg") || content.toLowerCase().endsWith(".png") || content.toLowerCase().endsWith(".gif"))
+                        {
+                            Thread.sleep(3000);
+                            String pic_f = "./User_Download/"+User_Name+"/"+content.substring(7);
+                            Profile pic_pro = new Profile(new File(pic_f),true);
+                            main_ui.insertImageWithAlignment(pic_pro.Chat,StyleConstants.ALIGN_LEFT);
+                            main_ui.insertText(" \n",Color.BLACK,16,StyleConstants.ALIGN_LEFT);
+                        }
+                    }
+
+                }
+                else if(receive_msg.equals("INFORMATION:SERVER_MESSAGE"))
+                {
+                    main_ui.insertText(now.get_from_Client()+"\n", Color.GRAY, 12, StyleConstants.ALIGN_CENTER);
+                    fw.write(now.get()+"\n");
+                    String msg = dis.readUTF();
+                    main_ui.insertText("",Color.BLACK,14,StyleConstants.ALIGN_CENTER);
+                    main_ui.insertTextWithBubble("————服务器提醒————\n",Color.BLACK, Color.YELLOW,14,StyleConstants.ALIGN_CENTER);
+                    main_ui.insertTextWithBubble(msg+"\n",Color.BLACK, Color.YELLOW,14,StyleConstants.ALIGN_CENTER);
+                    main_ui.insertTextWithBubble("—————————————\n",Color.BLACK, Color.YELLOW,14,StyleConstants.ALIGN_CENTER);
+
+                }
+                else if(receive_msg.equals("INFORMATION:KICKOFF"))
+                {
+                    JOptionPane.showMessageDialog(main_ui, "fw！服务器已将您踢出", "你被踢了", JOptionPane.INFORMATION_MESSAGE);
+                    exit(0);
+                }
+
+            } catch (IOException e) {
+                e.printStackTrace();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            try {
+                fw.flush();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+}
+
+class Profile
+{
+    String user_name;
+    Image OriginalImage;
+    ImageIcon chat_icon;
+    ImageIcon head_icon;
+    ImageIcon login_icon;
+    ImageIcon Chat;
+    Profile(String user_name)
+    {
+        this.user_name=user_name;
+        try {
+            System.out.println(this.user_name);
+            File file = new File("./User_Profile/" + this.user_name + ".jpg");
+            System.out.println(file);
+            OriginalImage = ImageIO.read(file);
+        }
+        catch(Exception e)
+        {
+
+            e.printStackTrace();
+            System.out.println("无法加载头像");
+        }
+        this.chat_icon = this.to_circle_scale(24,24);
+        this.head_icon = this.to_circle_scale(64,64);
+        this.login_icon=this.to_circle_scale(128,128);
+        this.Chat=this.scaleImageToSize(256,256);
+
+    }
+    Profile(String user_name,File dest)
+    {
+        this.user_name=user_name;
+        try {
+            System.out.println(this.user_name);
+            OriginalImage = ImageIO.read(dest);
+        }
+        catch(Exception e)
+        {
+            e.printStackTrace();
+            System.out.println("无法加载头像");
+        }
+        this.chat_icon = this.to_circle_scale(24,24);
+        this.head_icon = this.to_circle_scale(64,64);
+        this.login_icon=this.to_circle_scale(128,128);
+        this.Chat=this.scaleImageToSize(256,256);
+    }
+    Profile(File dest,boolean Chat)
+    {
+        this.user_name=user_name;
+        try {
+            System.out.println(this.user_name);
+            OriginalImage = ImageIO.read(dest);
+        }
+        catch(Exception e)
+        {
+            e.printStackTrace();
+            System.out.println("无法加载图片");
+        }
+        this.Chat=this.scaleImageToSize(256,256);
+    }
+    ImageIcon scaleImageToSize(int targetWidth, int targetHeight) {
+        try {
+            // 确保原始图像已加载
+            if (OriginalImage == null) {
+                System.out.println("原始图像未加载，无法缩放");
+                return null;
+            }
+
+            // 计算缩放比例，保持宽高比
+            double scaleFactor = Math.min((double) targetWidth / OriginalImage.getWidth(null), (double) targetHeight / OriginalImage.getHeight(null));
+            int scaledWidth = (int) (OriginalImage.getWidth(null) * scaleFactor);
+            int scaledHeight = (int) (OriginalImage.getHeight(null) * scaleFactor);
+
+            // 创建缩放后的图像
+            BufferedImage scaledImage = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2d = scaledImage.createGraphics();
+
+            // 设置抗锯齿和更高质量的插值模式
+            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+
+            // 绘制缩放后的图像到目标大小上，居中显示
+            int x = (targetWidth - scaledWidth) / 2;
+            int y = (targetHeight - scaledHeight) / 2;
+            g2d.drawImage(OriginalImage, x, y, scaledWidth, scaledHeight, null);
+
+            // 释放Graphics2D资源
+            g2d.dispose();
+
+            // 返回缩放后的ImageIcon对象
+            return new ImageIcon(scaledImage);
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("缩放图片时发生错误");
+        }
+        return null;
+    }
+    ImageIcon to_circle_scale(int scaledWidth,int scaledHeight)
+    {
+        try {
+            BufferedImage scaledImage = new BufferedImage(scaledWidth, scaledHeight, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2d = scaledImage.createGraphics();
+            // 设置抗锯齿和更高质量的插值模式
+            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            // 确保原始图像已加载
+            if (OriginalImage == null) {
+                System.out.println("原始图像未加载，无法生成圆形头像");
+                return null;
+            }
+            // 计算缩放比例，保持宽高比
+            double scale = Math.min((double) scaledWidth / OriginalImage.getWidth(null), (double) scaledHeight / OriginalImage.getHeight(null));
+            int scaledImgWidth = (int) (OriginalImage.getWidth(null) * scale);
+            int scaledImgHeight = (int) (OriginalImage.getHeight(null) * scale);
+            // 创建圆形剪切区域
+            int diameter = Math.min(scaledWidth, scaledHeight);
+            g2d.setClip(new Ellipse2D.Double((scaledWidth - diameter) / 2, (scaledHeight - diameter) / 2, diameter, diameter));
+            // 直接绘制缩放后的图像到圆形区域内
+            g2d.drawImage(OriginalImage, (scaledWidth - scaledImgWidth) / 2, (scaledHeight - scaledImgHeight) / 2, scaledImgWidth, scaledImgHeight, null);
+            // 释放Graphics2D资源
+            g2d.dispose();
+            // 设置图标
+            return new ImageIcon(scaledImage);
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("生成圆形头像时发生错误");
+        }
+        return null;
+    }
+
+}
+
+class Friend_Apply implements Runnable {
+    DataOutputStream dos = null;
+    Socket socket = null;
+    String Applier_Name;
+    String Target_Name;
+    Main_UI main_ui;
+    File selectedFile = null;
+
+    Friend_Apply(Socket socket, String Applier_Name, String Target_Name) {
+        try {
+            this.socket = socket;
+            this.dos = new DataOutputStream(socket.getOutputStream());
+            this.Applier_Name = Applier_Name;//申请者
+            this.Target_Name = Target_Name;//接受者
+            this.main_ui = main_ui;
+            System.out.println("加好友模式");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void run() {
+        try {
+            dos.writeUTF("INFORMATION:ADD_FRIENDS");
+            dos.writeUTF(this.Applier_Name);//先是发送申请者的的名字
+            dos.writeUTF(this.Target_Name);//再发送要得到申请的名字
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+}
+
+class Time_Now
+{
+    LocalDateTime now = LocalDateTime.now();
+    DateTimeFormatter formatter_style1 = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    DateTimeFormatter formatter_style2 = DateTimeFormatter.ofPattern("HH:mm");
+    int former_min;
+    boolean firstbootup=true;
+    Time_Now()
+    {
+        former_min=now.getMinute();
+    }
+    String get()
+    {
+        now=LocalDateTime.now();
+        String formattedNow = now.format(formatter_style1);
+        return formattedNow;
+    }
+    String get_from_Client()
+    {
+
+
+        now = LocalDateTime.now();
+        String formattedNow = now.format(formatter_style2);
+        if(firstbootup==true)
+        {   firstbootup=false;
+            return formattedNow;
+        }
+        int now_min=now.getMinute();
+        if(now_min-former_min>=1)
+        {
+            former_min=now_min;
+            return formattedNow;
+        }
+        else
+        {
+            return "";
+        }
+    }
+}
+//模糊效果
+class FrostedGlassImagePanel extends JPanel {
+    private BufferedImage originalImage;
+    private BufferedImage frostedImage;
+
+    public FrostedGlassImagePanel(String imagePath, float blurRadius) {
+        try {
+            // 加载原始图像
+            originalImage = ImageIO.read(new File(imagePath));
+
+            // 应用高斯模糊滤镜
+            GaussianFilter filter = new GaussianFilter(blurRadius);
+            frostedImage = filter.filter(originalImage, null);
+        } catch (IOException e) {
+            e.printStackTrace();
+            // 在这里处理图像加载失败的情况，例如显示错误消息或默认图像
+        }
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        if (frostedImage != null) {
+            g.drawImage(frostedImage, 0, 0, getWidth(), getHeight(), this);
+        }
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+        if (frostedImage != null) {
+            return new Dimension(frostedImage.getWidth(), frostedImage.getHeight());
+        }
+        return super.getPreferredSize();
+    }
+}
